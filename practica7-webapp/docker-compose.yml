@@ -1,0 +1,43 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: mysql-db
+    environment:
+      # Estas variables hacen que MySQL cree la base de datos y el usuario al iniciar
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: miapp
+      MYSQL_USER: usuario
+      MYSQL_PASSWORD: clave123
+    volumes:
+      # Script de inicialización (se ejecuta solo la primera vez)
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      # Volumen con nombre: conserva los datos aunque se elimine el contenedor
+      - datos_mysql:/var/lib/mysql
+    healthcheck:
+      # MySQL tarda unos segundos en estar listo. Esta prueba indica a Compose
+      # cuándo realmente acepta conexiones (127.0.0.1 fuerza conexión por red,
+      # que solo existe cuando el servidor definitivo ya arrancó).
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    container_name: app-flask
+    ports:
+      - "5000:5000"
+    environment:
+      # DB_HOST usa el nombre del servicio "db", no localhost
+      DB_HOST: db
+      DB_USER: usuario
+      DB_PASSWORD: clave123
+      DB_NAME: miapp
+    depends_on:
+      db:
+        # La app espera a que el healthcheck de MySQL pase antes de arrancar.
+        # Sin esto, la app intentaría conectarse antes de tiempo y fallaría.
+        condition: service_healthy
+
+volumes:
+  datos_mysql:
